@@ -1,56 +1,49 @@
 import os
+import tensorflow as tf
 import numpy as np
-import streamlit as st
-from tensorflow.keras.preprocessing.image import load_img, img_to_array
-from keras.models import load_model
+from tensorflow.keras.preprocessing import image
 from PIL import Image
+import cv2
+from keras.models import load_model
+from flask import Flask, request, render_template
+from werkzeug.utils import secure_filename
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+app = Flask(__name__)
 
-# Load the trained model
-model = load_model('model.h5')
-print('Model loaded.')
+model =load_model('model.h5')
+print('Model loaded. Check http://127.0.0.1:5000/')
 
-# Define class labels
 labels = {0: 'Healthy', 1: 'Powdery', 2: 'Rust'}
 
-# Folder to hold uploaded images
-UPLOAD_FOLDER = 'uploads'
 
-# Check if the folder exists, if not create it
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-
-# Function to process and predict image
-def getResult(image):
-    img = image.resize((225, 225))  # Resize to match model input size
-    x = np.array(img)
-    x = x.astype('float32') / 255.  # Normalize the image
-    x = np.expand_dims(x, axis=0)  # Add batch dimension
+def getResult(image_path):
+    img = load_img(image_path, target_size=(225,225))
+    x = img_to_array(img)
+    x = x.astype('float32') / 255.
+    x = np.expand_dims(x, axis=0)
     predictions = model.predict(x)[0]
     return predictions
 
-# Streamlit App Interface
-st.title("Plant Disease Classification Using Deep Learning")
-st.write("Select an image from the uploads folder to classify the disease.")
 
-# Get list of image files in the uploads folder
-image_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.endswith(('.png', '.jpg', '.jpeg'))]
+@app.route('/', methods=['GET'])
+def index():
+    return render_template('index.html')
 
-# Select image from the folder
-selected_image = st.selectbox("Choose an image", image_files)
 
-if selected_image:
-    # Load and display the selected image
-    img_path = os.path.join(UPLOAD_FOLDER, selected_image)
-    img = Image.open(img_path)
+@app.route('/predict', methods=['GET', 'POST'])
+def upload():
+    if request.method == 'POST':
+        f = request.files['file']
 
-    # Show the selected image
-    st.image(img, caption="Uploaded Image", use_column_width=True)
-    st.write("")
+        basepath = os.path.dirname(__file__)
+        file_path = os.path.join(
+            basepath, 'uploads', secure_filename(f.filename))
+        f.save(file_path)
+        predictions=getResult(file_path)
+        predicted_label = labels[np.argmax(predictions)]
+        return str(predicted_label)
+    return None
 
-    # Get predictions
-    predictions = getResult(img)
-    predicted_label = labels[np.argmax(predictions)]
 
-    # Display the predicted label
-    st.write(f"**Prediction**: {predicted_label}")
-    st.write(f"Prediction Probabilities: {predictions}")
+if __name__ == '__main__':
+    app.run(debug=True)
